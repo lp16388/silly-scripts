@@ -1620,44 +1620,79 @@ window.showEquipmentDetails = function (equipment) {
   });
 };
 
-// 运行时精简UI：隐藏制作/强化按钮（若存在），并给背包条目添加稀有度徽章
-document.addEventListener('DOMContentLoaded', () => {
-  try {
-    const craft = document.getElementById('equipment-craft-btn');
-    const upg = document.getElementById('equipment-upgrade-btn');
-    craft && (craft.style.display = 'none');
-    upg && (upg.style.display = 'none');
-  } catch {}
+// 装备系统UI优化
+window.equipmentUI = {
+  cache: new Map(),
+  debounceTimer: null,
 
-  // 在渲染背包后增强稀有度显示
-  window.enhanceEquipmentInventoryUI = async function () {
+  // 防抖函数
+  debounce: function (func, delay) {
+    return (...args) => {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => func.apply(this, args), delay);
+    };
+  },
+
+  // 增强装备背包UI
+  enhanceInventory: function () {
     try {
       const vars = getVariables({ type: 'message' }) || {};
       const inv = vars?.stat_data?.battle?.equipment_inventory || [];
+
+      // 使用缓存避免重复计算
+      const cacheKey = inv.map(item => item.id).join(',');
+      if (this.cache.has(cacheKey)) return;
+
       const map = new Map(inv.map(it => [it.id, it]));
       document.querySelectorAll('.equipment-item[data-item-id]').forEach(el => {
         const id = el.getAttribute('data-item-id');
         const item = map.get(id);
         if (!item) return;
+
         // 避免重复添加
         if (el.querySelector('.equipment-quality-badge')) return;
+
         const badge = document.createElement('div');
         badge.className = 'equipment-quality equipment-quality-badge ' + (item.quality || 'common');
         badge.textContent = item.quality || 'common';
         badge.style.marginBottom = '6px';
         el.insertBefore(badge, el.firstChild);
       });
-    } catch {}
-  };
 
-  // 监听背包容器变化，自动增强
-  const invEl = document.getElementById('equipment-inventory');
-  if (invEl) {
-    const obs = new MutationObserver(() => window.enhanceEquipmentInventoryUI());
-    obs.observe(invEl, { childList: true, subtree: false });
-  }
-  // 首次尝试
-  setTimeout(() => window.enhanceEquipmentInventoryUI?.(), 300);
+      this.cache.set(cacheKey, true);
+    } catch (err) {
+      console.warn('装备UI增强失败:', err);
+    }
+  },
+
+  // 初始化
+  init: function () {
+    // 隐藏制作/强化按钮
+    try {
+      const craft = document.getElementById('equipment-craft-btn');
+      const upg = document.getElementById('equipment-upgrade-btn');
+      craft && (craft.style.display = 'none');
+      upg && (upg.style.display = 'none');
+    } catch {}
+
+    // 防抖版本的增强函数
+    const debouncedEnhance = this.debounce(this.enhanceInventory.bind(this), 100);
+
+    // 监听背包容器变化
+    const invEl = document.getElementById('equipment-inventory');
+    if (invEl) {
+      const obs = new MutationObserver(debouncedEnhance);
+      obs.observe(invEl, { childList: true, subtree: false });
+    }
+
+    // 首次尝试
+    setTimeout(debouncedEnhance, 300);
+  },
+};
+
+// 运行时初始化
+document.addEventListener('DOMContentLoaded', () => {
+  window.equipmentUI.init();
 });
 
 console.log('装备系统已加载到 bundle.js（简化版：仅掉落/展示）');
